@@ -1,11 +1,66 @@
 from flask import Flask, request, jsonify
+import pandas as pd
+from sklearn.metrics.pairwise import cosine_similarity
+from collections import defaultdict, Counter
+from contextlib import closing
+import re
+import nltk
+import pickle
+import numpy as np
+
+nltk.download('stopwords')
+TUPLE_SIZE = 6
+TF_MASK = 2 ** 16 - 1
+from nltk.stem.porter import *
+from nltk.corpus import stopwords
+import body_index
+# import title_index
+# import anchor_index
+index_text = read_index('body_index','body')
+# index_title = read_index('title_index','title')
+# index_anchor = read_index('anchor_index', 'anchor')
+
 
 class MyFlaskApp(Flask):
     def run(self, host=None, port=None, debug=None, **options):
         super(MyFlaskApp, self).run(host=host, port=port, debug=debug, **options)
 
+
 app = MyFlaskApp(__name__)
 app.config['JSONIFY_PRETTYPRINT_REGULAR'] = False
+
+RE_WORD = re.compile(r"""[\#\@\w](['\-]?\w){2,24}""", re.UNICODE)
+stopwords_frozen = frozenset(stopwords.words('english'))
+corpus_stopwords = ['category', 'references', 'also', 'links', 'extenal', 'see', 'thumb']
+ALL_STOPWORDS = stopwords_frozen.union(corpus_stopwords)
+
+
+def tokenize(text):
+    """
+    This function turns text into a list of tokens. Moreover, it filters stopwords.
+
+    Parameters:
+        text: string , represting the text to tokenize.
+
+    Returns:
+         list of tokens (e.g., list of tokens).
+    """
+
+    list_of_tokens = [token.group() for token in RE_WORD.finditer(text.lower()) if
+                      token.group() not in ALL_STOPWORDS]
+    return list_of_tokens
+
+
+def read_posting_list(inverted, w):
+    with closing(body_index.MultiFileReader()) as reader:
+        locs = inverted.posting_locs[w]
+        b = reader.read(locs, inverted.df[w] * TUPLE_SIZE)
+        posting_list = []
+        for i in range(inverted.df[w]):
+            doc_id = int.from_bytes(b[i*TUPLE_SIZE:i*TUPLE_SIZE+4], 'big')
+            tf = int.from_bytes(b[i*TUPLE_SIZE+4:(i+1)*TUPLE_SIZE], 'big')
+            posting_list.append((doc_id, tf))
+        return posting_list
 
 
 @app.route("/search")
@@ -29,11 +84,12 @@ def search():
     res = []
     query = request.args.get('query', '')
     if len(query) == 0:
-      return jsonify(res)
+        return jsonify(res)
     # BEGIN SOLUTION
 
     # END SOLUTION
     return jsonify(res)
+
 
 @app.route("/search_body")
 def search_body():
@@ -54,11 +110,25 @@ def search_body():
     res = []
     query = request.args.get('query', '')
     if len(query) == 0:
-      return jsonify(res)
+        return jsonify(res)
     # BEGIN SOLUTION
+    # Tokenize query
+    tokenized_query = tokenize(query)
+    if len(tokenized_query) == 0:
+        return jsonify(res)
+
+    cosine_sim = defaultdict(float)
+    query_len = len(tokenized_query)
+    tf_query = Counter(tokenized_query)
+    for term, count in tf_query.items():
+        idf = inverted_index.get_idf(term)
+        pls = read_posting_list(inverted_index, term)
+        for w, locs in pls:
+            cosine_sim[w] += locs / inverted_index.get_doc_len(w) * count/query_len
 
     # END SOLUTION
     return jsonify(res)
+
 
 @app.route("/search_title")
 def search_title():
@@ -84,11 +154,19 @@ def search_title():
     res = []
     query = request.args.get('query', '')
     if len(query) == 0:
-      return jsonify(res)
+        return jsonify(res)
     # BEGIN SOLUTION
+    # Tokenize query
+    tokenized_query = tokenize(query)
+    if len(tokenized_query) == 0:
+        return jsonify(res)
+
+
+
 
     # END SOLUTION
     return jsonify(res)
+
 
 @app.route("/search_anchor")
 def search_anchor():
@@ -102,7 +180,7 @@ def search_anchor():
         distinct query word, regardless of the number of times the term appeared 
         in the anchor text (or query). 
 
-        Test this by navigating to the a URL like:
+        Test this by navigating to a URL like:
          http://YOUR_SERVER_DOMAIN/search_anchor?query=hello+world
         where YOUR_SERVER_DOMAIN is something like XXXX-XX-XX-XX-XX.ngrok.io
         if you're using ngrok on Colab or your external IP on GCP.
@@ -114,11 +192,16 @@ def search_anchor():
     res = []
     query = request.args.get('query', '')
     if len(query) == 0:
-      return jsonify(res)
+        return jsonify(res)
     # BEGIN SOLUTION
-    
+    # Tokenize query
+    tokenized_query = tokenize(query)
+    if len(tokenized_query) == 0:
+        return jsonify(res)
+
     # END SOLUTION
     return jsonify(res)
+
 
 @app.route("/get_pagerank", methods=['POST'])
 def get_pagerank():
@@ -139,11 +222,12 @@ def get_pagerank():
     res = []
     wiki_ids = request.get_json()
     if len(wiki_ids) == 0:
-      return jsonify(res)
+        return jsonify(res)
     # BEGIN SOLUTION
 
     # END SOLUTION
     return jsonify(res)
+
 
 @app.route("/get_pageview", methods=['POST'])
 def get_pageview():
@@ -166,7 +250,7 @@ def get_pageview():
     res = []
     wiki_ids = request.get_json()
     if len(wiki_ids) == 0:
-      return jsonify(res)
+        return jsonify(res)
     # BEGIN SOLUTION
 
     # END SOLUTION
