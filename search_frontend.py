@@ -19,7 +19,9 @@ from nltk.stem.porter import *
 from nltk.corpus import stopwords
 from inverted_index_colab import *
 
-index = InvertedIndex().read_index(os.getcwd(), 'train_body_index')
+index_text = InvertedIndex().read_index(os.getcwd(), 'train_body_index')
+index_title = InvertedIndex().read_index(os.getcwd(), 'train_title_index')
+# index_anchor = read_index('anchor_index', 'anchor')
 
 
 class MyFlaskApp(Flask):
@@ -113,19 +115,20 @@ def search_body():
     tf_query = Counter(tokenized_query)
     query_vec_len = sum([c**2 for w, c in tf_query.items()])
     for term, count in tf_query.items():
-        pls = index.read_posting_list(term)
-        term_idf = index.get_idf(term)
+        pls = index_text.read_posting_list(term)
+        term_idf = index_text.get_idf(term)
         for doc_id, doc_tf in pls:
             # normalized query tfidf
             query_tfidf = count / query_len * term_idf
             # normalized document tfidf
-            doc_tfidf = doc_tf / index.doc2len[doc_id] * term_idf
+            doc_tfidf = doc_tf / index_text.doc2len[doc_id] * term_idf
             cosine_sim_numerator[doc_id] += doc_tfidf * query_tfidf
 
-    cosine_sim = {doc_id: numerator / math.sqrt(index.doc2vec_len[doc_id] * query_vec_len) for doc_id, numerator in cosine_sim_numerator.items()}
+    cosine_sim = {doc_id: numerator / math.sqrt(index_text.doc2vec_len[doc_id] * query_vec_len) for doc_id, numerator in cosine_sim_numerator.items()}
     sorted_cosin_sim = {k: v for k, v in sorted(cosine_sim.items(), key=lambda item: item[1], reverse=True)}
+    # add top 100 docs to result
     for i, doc_id in enumerate(sorted_cosin_sim.keys()):
-        res.append((doc_id, index.doc2title[doc_id]))
+        res.append((doc_id, index_text.doc2title[doc_id]))
         if i == 100:
             break
     # END SOLUTION
@@ -163,6 +166,18 @@ def search_title():
     if len(tokenized_query) == 0:
         return jsonify(res)
 
+    match_counter = defaultdict(int)
+    # iterate DISTINCT query tokens and for each doc that has that word increase counter by 1
+    for term in set(tokenized_query):
+        pls = index_title.read_posting_list(term)
+        for doc_id in pls:
+            match_counter[doc_id] += 1
+
+    sorted_match_counter = {k: v for k, v in sorted(match_counter.items(), key=lambda item: item[1], reverse=True)}
+    for doc_id, match_count in sorted_match_counter.items():
+        if match_count == 0:
+            break
+        res.append((doc_id, index_title.doc2title[doc_id]))
     # END SOLUTION
     return jsonify(res)
 
