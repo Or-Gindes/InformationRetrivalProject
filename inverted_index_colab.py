@@ -121,6 +121,8 @@ class InvertedIndex:
         self.doc2len = {}
         # dict for document VectorLength
         self.doc2vec_len = {}
+        # dict to match doc_id to title for results
+        self.doc2title = {}
 
         for doc_id, tokens in docs.items():
             self.add_doc(doc_id, tokens)

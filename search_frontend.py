@@ -8,9 +8,9 @@ import nltk
 import pickle
 import numpy as np
 
-import pyspark
+# import pyspark
+# from graphframes import *
 import os
-from graphframes import *
 
 nltk.download('stopwords')
 TUPLE_SIZE = 6
@@ -19,12 +19,7 @@ from nltk.stem.porter import *
 from nltk.corpus import stopwords
 from inverted_index_colab import *
 
-# import title_index
-# import anchor_index
-index_text = InvertedIndex().read_index(os.getcwd(), 'train_body_index')
-
-# index_title = read_index('title_index','title')
-# index_anchor = read_index('anchor_index', 'anchor')
+index = InvertedIndex().read_index(os.getcwd(), 'train_body_index')
 
 
 class MyFlaskApp(Flask):
@@ -104,7 +99,7 @@ def search_body():
         element is a tuple (wiki_id, title).
     '''
     res = []
-    query = 'apple'# request.args.get('query', '')
+    query = request.args.get('query', '')
     if len(query) == 0:
         return jsonify(res)
     # BEGIN SOLUTION
@@ -118,19 +113,21 @@ def search_body():
     tf_query = Counter(tokenized_query)
     query_vec_len = sum([c**2 for w, c in tf_query.items()])
     for term, count in tf_query.items():
-        pls = index_text.read_posting_list(term)
-        term_idf = index_text.get_idf(term)
+        pls = index.read_posting_list(term)
+        term_idf = index.get_idf(term)
         for doc_id, doc_tf in pls:
             # normalized query tfidf
             query_tfidf = count / query_len * term_idf
             # normalized document tfidf
-            doc_tfidf = doc_tf / index_text.doc2len[doc_id] * term_idf
+            doc_tfidf = doc_tf / index.doc2len[doc_id] * term_idf
             cosine_sim_numerator[doc_id] += doc_tfidf * query_tfidf
 
-    cosine_sim = {doc_id: numerator / math.sqrt(index_text.doc2vec_len[doc_id] * query_vec_len) for doc_id, numerator in cosine_sim_numerator.items()}
+    cosine_sim = {doc_id: numerator / math.sqrt(index.doc2vec_len[doc_id] * query_vec_len) for doc_id, numerator in cosine_sim_numerator.items()}
     sorted_cosin_sim = {k: v for k, v in sorted(cosine_sim.items(), key=lambda item: item[1], reverse=True)}
-    for doc_id in sorted_cosin_sim.keys():
-        res.append(doc_id)
+    for i, doc_id in enumerate(sorted_cosin_sim.keys()):
+        res.append((doc_id, index.doc2title[doc_id]))
+        if i == 100:
+            break
     # END SOLUTION
     return jsonify(res)
 
