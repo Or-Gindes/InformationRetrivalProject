@@ -24,7 +24,6 @@ LOCAL_DIR` if you store index data locally.
 Things we plan to try -
 
 Inverted index - 
-* Remove english stopwords
 * Remove English stopwords + corpus stopwords
 * Stemming + stopwords removal
 * Lemmatization

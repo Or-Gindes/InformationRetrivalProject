@@ -7,7 +7,9 @@ import re
 import nltk
 import pickle
 import numpy as np
+
 import pyspark
+import os
 from graphframes import *
 
 nltk.download('stopwords')
@@ -15,12 +17,11 @@ TUPLE_SIZE = 6
 TF_MASK = 2 ** 16 - 1
 from nltk.stem.porter import *
 from nltk.corpus import stopwords
-import body_index
+from inverted_index_colab import *
 
 # import title_index
 # import anchor_index
-index_text = read_index('body_index', 'body')
-
+index_text = InvertedIndex().read_index(os.getcwd(), 'train_body_index')
 
 # index_title = read_index('title_index','title')
 # index_anchor = read_index('anchor_index', 'anchor')
@@ -38,6 +39,8 @@ RE_WORD = re.compile(r"""[\#\@\w](['\-]?\w){2,24}""", re.UNICODE)
 stopwords_frozen = frozenset(stopwords.words('english'))
 corpus_stopwords = ['category', 'references', 'also', 'links', 'extenal', 'see', 'thumb']
 ALL_STOPWORDS = stopwords_frozen.union(corpus_stopwords)
+# stemmer
+porterStemmer = PorterStemmer()
 
 
 def tokenize(text):
@@ -54,18 +57,6 @@ def tokenize(text):
     list_of_tokens = [token.group() for token in RE_WORD.finditer(text.lower()) if
                       token.group() not in ALL_STOPWORDS]
     return list_of_tokens
-
-
-def read_posting_list(inverted, w):
-    with closing(body_index.MultiFileReader()) as reader:
-        locs = inverted.posting_locs[w]
-        b = reader.read(locs, inverted.df[w] * TUPLE_SIZE)
-        posting_list = []
-        for i in range(inverted.df[w]):
-            doc_id = int.from_bytes(b[i * TUPLE_SIZE:i * TUPLE_SIZE + 4], 'big')
-            tf = int.from_bytes(b[i * TUPLE_SIZE + 4:(i + 1) * TUPLE_SIZE], 'big')
-            posting_list.append((doc_id, tf))
-        return posting_list
 
 
 @app.route("/search")
@@ -113,7 +104,7 @@ def search_body():
         element is a tuple (wiki_id, title).
     '''
     res = []
-    query = request.args.get('query', '')
+    query = 'apple'# request.args.get('query', '')
     if len(query) == 0:
         return jsonify(res)
     # BEGIN SOLUTION
@@ -122,15 +113,24 @@ def search_body():
     if len(tokenized_query) == 0:
         return jsonify(res)
 
-    cosine_sim = defaultdict(float)
+    cosine_sim_numerator = defaultdict(float)
     query_len = len(tokenized_query)
     tf_query = Counter(tokenized_query)
+    query_vec_len = sum([c**2 for w, c in tf_query.items()])
     for term, count in tf_query.items():
-        idf = inverted_index.get_idf(term)
-        pls = read_posting_list(inverted_index, term)
-        for w, locs in pls:
-            cosine_sim[w] += locs / inverted_index.get_doc_len(w) * count / query_len
+        pls = index_text.read_posting_list(term)
+        term_idf = index_text.get_idf(term)
+        for doc_id, doc_tf in pls:
+            # normalized query tfidf
+            query_tfidf = count / query_len * term_idf
+            # normalized document tfidf
+            doc_tfidf = doc_tf / index_text.doc2len[doc_id] * term_idf
+            cosine_sim_numerator[doc_id] += doc_tfidf * query_tfidf
 
+    cosine_sim = {doc_id: numerator / math.sqrt(index_text.doc2vec_len[doc_id] * query_vec_len) for doc_id, numerator in cosine_sim_numerator.items()}
+    sorted_cosin_sim = {k: v for k, v in sorted(cosine_sim.items(), key=lambda item: item[1], reverse=True)}
+    for doc_id in sorted_cosin_sim.keys():
+        res.append(doc_id)
     # END SOLUTION
     return jsonify(res)
 
@@ -226,13 +226,13 @@ def get_pagerank():
     if len(wiki_ids) == 0:
         return jsonify(res)
     # BEGIN SOLUTION
-    edges, vertices = generate_graph(pages_links)
-    edgesDF = edges.toDF(['src', 'dst']).repartition(4, 'src')
-    verticesDF = vertices.toDF(['id']).repartition(4, 'id')
-    g = GraphFrame(verticesDF, edgesDF)
-    pr_results = g.pageRank(resetProbability=0.15, maxIter=10)
-    pr = pr_results.vertices.select("id", "pagerank")
-    pr = pr.sort(col('pagerank').desc())
+    # edges, vertices = generate_graph(pages_links)
+    # edgesDF = edges.toDF(['src', 'dst']).repartition(4, 'src')
+    # verticesDF = vertices.toDF(['id']).repartition(4, 'id')
+    # g = GraphFrame(verticesDF, edgesDF)
+    # pr_results = g.pageRank(resetProbability=0.15, maxIter=10)
+    # pr = pr_results.vertices.select("id", "pagerank")
+    # pr = pr.sort(col('pagerank').desc())
     # END SOLUTION
     return jsonify(res)
 
@@ -288,5 +288,6 @@ def get_pageview():
 
 
 if __name__ == '__main__':
+    search_body()
     # run the Flask RESTful API, make the server publicly available (host='0.0.0.0') on port 8080
     app.run(host='0.0.0.0', port=8080, debug=True)
