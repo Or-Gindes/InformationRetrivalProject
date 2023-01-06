@@ -184,7 +184,7 @@ class InvertedIndex:
             p.unlink()
 
     @staticmethod
-    def write_a_posting_list(b_w_pl):
+    def write_a_posting_list(b_w_pl, folder):
         """ Takes a (bucket_id, [(w0, posting_list_0), (w1, posting_list_1), ...])
         and writes it out to disk as files named {bucket_id}_XXX.bin under the
         current directory. Returns a posting locations dictionary that maps each
@@ -201,7 +201,7 @@ class InvertedIndex:
         posting_locs = defaultdict(list)
         bucket, list_w_pl = b_w_pl
 
-        with closing(MultiFileWriter('.', bucket)) as writer:
+        with closing(MultiFileWriter(folder, bucket)) as writer:
             for w, pl in list_w_pl:
                 # convert to bytes
                 b = b''.join([(doc_id << 16 | (tf & TF_MASK)).to_bytes(TUPLE_SIZE, 'big')
@@ -234,7 +234,7 @@ def token2bucket_id(token):
     return int(_hash(token), 16) % NUM_BUCKETS
 
 
-def partition_postings_and_write(postings):
+def partition_postings_and_write(postings, folder):
     """ A function that partitions the posting lists into buckets, writes out
     all posting lists in a bucket to disk, and returns the posting locations for
     each bucket. Partitioning should be done through the use of `token2bucket`
@@ -254,7 +254,7 @@ def partition_postings_and_write(postings):
       more details.
     """
     b_w_pl = postings.map(lambda x: (token2bucket_id(x[0]), (x[0], x[1]))).groupByKey()
-    return b_w_pl.map(lambda x: InvertedIndex().write_a_posting_list(x))
+    return b_w_pl.map(lambda x: InvertedIndex().write_a_posting_list(x, folder))
 
 
 def word_count(text, id):

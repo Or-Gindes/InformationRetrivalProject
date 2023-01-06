@@ -128,9 +128,9 @@ def search_body():
     sorted_cosin_sim = {k: v for k, v in sorted(cosine_sim.items(), key=lambda item: item[1], reverse=True)}
     # add top 100 docs to result
     for i, doc_id in enumerate(sorted_cosin_sim.keys()):
-        res.append((doc_id, index_text.doc2title[doc_id]))
         if i == 100:
             break
+        res.append((doc_id, index_text.doc2title[doc_id]))
     # END SOLUTION
     return jsonify(res)
 
@@ -170,7 +170,7 @@ def search_title():
     # iterate DISTINCT query tokens and for each doc that has that word increase counter by 1
     for term in set(tokenized_query):
         pls = index_title.read_posting_list(term)
-        for doc_id in pls:
+        for doc_id, _ in pls:
             match_counter[doc_id] += 1
 
     sorted_match_counter = {k: v for k, v in sorted(match_counter.items(), key=lambda item: item[1], reverse=True)}
@@ -300,6 +300,7 @@ def get_pageview():
 
 
 if __name__ == '__main__':
-    search_body()
+    # search_body()
+    search_title()
     # run the Flask RESTful API, make the server publicly available (host='0.0.0.0') on port 8080
     app.run(host='0.0.0.0', port=8080, debug=True)
