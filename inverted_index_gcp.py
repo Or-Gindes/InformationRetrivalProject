@@ -126,6 +126,14 @@ class InvertedIndex:
         # the number of bytes from the beginning of the file where the posting list
         # starts. 
         self.posting_locs = defaultdict(list)
+        # Document Number
+        self._N = 0
+        # Dict for document length
+        self.doc2len = {}
+        # dict for document VectorLength
+        self.doc2vec_len = {}
+        # dict to match doc_id to title for results
+        self.doc2title = {}
 
         for doc_id, tokens in docs.items():
             self.add_doc(doc_id, tokens)
@@ -264,6 +272,30 @@ def reduce_word_counts(unsorted_pl):
   '''
     sorted_pl = sorted(unsorted_pl, key=itemgetter(0))
     return sorted_pl
+
+
+def get_doc_len(text, doc_id):
+    """ Count document filtered length for storage in index as well as document vector length for RDD calculations
+  Parameters:
+  -----------
+    text: str
+      Text of one document
+    id: int
+      Document id
+  Returns:
+  --------
+    List of tuples
+      A list of (doc_id, doc_length, SumOfSquares(tf))
+  """
+    tokens = [token.group() for token in RE_WORD.finditer(text.lower())]
+    filtered_tokens = [tok for tok in tokens if (tok not in all_stopwords)]
+    doc_word_count = Counter(filtered_tokens)
+    doc_length = 0
+    doc_vec_length = 0
+    for tok, tf in doc_word_count.items():
+        doc_length += tf
+        doc_vec_length += tf ** 2
+    return [(doc_id, doc_length, doc_vec_length)]
 
 
 def calculate_df(postings):
