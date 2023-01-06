@@ -13,9 +13,6 @@ import pickle
 from google.cloud import storage
 from collections import defaultdict
 from contextlib import closing
-import nltk
-from nltk.corpus import stopwords
-from nltk.stem.porter import *
 import hashlib
 
 
@@ -23,7 +20,6 @@ def _hash(s):
     return hashlib.blake2b(bytes(s, encoding='utf8'), digest_size=5).hexdigest()
 
 
-nltk.download('stopwords')
 # Let's start with a small block size of 30 bytes just to test things out.
 BLOCK_SIZE = 1999998
 
@@ -31,12 +27,13 @@ BLOCK_SIZE = 1999998
 class MultiFileWriter:
     """ Sequential binary writer to multiple files of up to BLOCK_SIZE each. """
 
-    def __init__(self, base_dir, name, bucket_name):
+    def __init__(self, base_dir, name, bucket_name, bucket_folder):
         self._base_dir = Path(base_dir)
         self._name = name
         self._file_gen = (open(self._base_dir / f'{name}_{i:03}.bin', 'wb')
                           for i in itertools.count())
         self._f = next(self._file_gen)
+        self._folder = bucket_folder
         # Connecting to google storage bucket. 
         self.client = storage.Client()
         self.bucket = self.client.bucket(bucket_name)
@@ -65,7 +62,7 @@ class MultiFileWriter:
             The function saves the posting files into the right bucket in google storage.
         """
         file_name = self._f.name
-        blob = self.bucket.blob(f"postings_gcp/{file_name}")
+        blob = self.bucket.blob(f"{self._folder}/{file_name}")
         blob.upload_from_filename(file_name)
 
 
@@ -195,11 +192,11 @@ class InvertedIndex:
             p.unlink()
 
     @staticmethod
-    def write_a_posting_list(b_w_pl, bucket_name):
+    def write_a_posting_list(b_w_pl, bucket_name, folder):
         posting_locs = defaultdict(list)
         bucket_id, list_w_pl = b_w_pl
 
-        with closing(MultiFileWriter(".", bucket_id, bucket_name)) as writer:
+        with closing(MultiFileWriter(".", bucket_id, bucket_name, folder)) as writer:
             for w, pl in list_w_pl:
                 # convert to bytes
                 b = b''.join([(doc_id << 16 | (tf & TF_MASK)).to_bytes(TUPLE_SIZE, 'big')
@@ -209,11 +206,11 @@ class InvertedIndex:
                 # save file locations to index
                 posting_locs[w].extend(locs)
             writer.upload_to_gcp()
-            InvertedIndex._upload_posting_locs(bucket_id, posting_locs, bucket_name)
+            InvertedIndex._upload_posting_locs(bucket_id, posting_locs, bucket_name, folder)
         return bucket_id
 
     @staticmethod
-    def _upload_posting_locs(bucket_id, posting_locs, bucket_name):
+    def _upload_posting_locs(bucket_id, posting_locs, bucket_name, folder):
         with open(f"{bucket_id}_posting_locs.pickle", "wb") as f:
             pickle.dump(posting_locs, f)
         client = storage.Client()
@@ -222,15 +219,6 @@ class InvertedIndex:
         blob_posting_locs.upload_from_filename(f"{bucket_id}_posting_locs.pickle")
 
 
-english_stopwords = frozenset(stopwords.words('english'))
-corpus_stopwords = ["category", "references", "also", "external", "links",
-                    "may", "first", "see", "history", "people", "one", "two",
-                    "part", "thumb", "including", "second", "following",
-                    "many", "however", "would", "became"]
-
-all_stopwords = english_stopwords.union(corpus_stopwords)
-RE_WORD = re.compile(r"""[\#\@\w](['\-]?\w){2,24}""", re.UNICODE)
-
 NUM_BUCKETS = 124
 
 
@@ -238,25 +226,25 @@ def token2bucket_id(token):
     return int(_hash(token), 16) % NUM_BUCKETS
 
 
-def word_count(text, id):
-    ''' Count the frequency of each word in `text` (tf) that is not included in
-  `all_stopwords` and return entries that will go into our posting lists.
-  Parameters:
-  -----------
-    text: str
-      Text of one document
-    id: int
-      Document id
-  Returns:
-  --------
-    List of tuples
-      A list of (token, (doc_id, tf)) pairs
-      for example: [("Anarchism", (12, 5)), ...]
-  '''
-    tokens = [token.group() for token in RE_WORD.finditer(text.lower())]
-    filtered_tokens = [tok for tok in tokens if (tok not in all_stopwords)]
-    doc_word_count = Counter(filtered_tokens)
-    return [(tok, (id, tf)) for tok, tf in doc_word_count.items()]
+# def word_count(text, id):
+#     ''' Count the frequency of each word in `text` (tf) that is not included in
+#   `all_stopwords` and return entries that will go into our posting lists.
+#   Parameters:
+#   -----------
+#     text: str
+#       Text of one document
+#     id: int
+#       Document id
+#   Returns:
+#   --------
+#     List of tuples
+#       A list of (token, (doc_id, tf)) pairs
+#       for example: [("Anarchism", (12, 5)), ...]
+#   '''
+#     tokens = [token.group() for token in RE_WORD.finditer(text.lower())]
+#     filtered_tokens = [tok for tok in tokens if (tok not in all_stopwords)]
+#     doc_word_count = Counter(filtered_tokens)
+#     return [(tok, (id, tf)) for tok, tf in doc_word_count.items()]
 
 
 def reduce_word_counts(unsorted_pl):
@@ -274,28 +262,28 @@ def reduce_word_counts(unsorted_pl):
     return sorted_pl
 
 
-def get_doc_len(text, doc_id):
-    """ Count document filtered length for storage in index as well as document vector length for RDD calculations
-  Parameters:
-  -----------
-    text: str
-      Text of one document
-    id: int
-      Document id
-  Returns:
-  --------
-    List of tuples
-      A list of (doc_id, doc_length, SumOfSquares(tf))
-  """
-    tokens = [token.group() for token in RE_WORD.finditer(text.lower())]
-    filtered_tokens = [tok for tok in tokens if (tok not in all_stopwords)]
-    doc_word_count = Counter(filtered_tokens)
-    doc_length = 0
-    doc_vec_length = 0
-    for tok, tf in doc_word_count.items():
-        doc_length += tf
-        doc_vec_length += tf ** 2
-    return [(doc_id, doc_length, doc_vec_length)]
+# def get_doc_len(text, doc_id):
+#     """ Count document filtered length for storage in index as well as document vector length for RDD calculations
+#   Parameters:
+#   -----------
+#     text: str
+#       Text of one document
+#     id: int
+#       Document id
+#   Returns:
+#   --------
+#     List of tuples
+#       A list of (doc_id, doc_length, SumOfSquares(tf))
+#   """
+#     tokens = [token.group() for token in RE_WORD.finditer(text.lower())]
+#     filtered_tokens = [tok for tok in tokens if (tok not in all_stopwords)]
+#     doc_word_count = Counter(filtered_tokens)
+#     doc_length = 0
+#     doc_vec_length = 0
+#     for tok, tf in doc_word_count.items():
+#         doc_length += tf
+#         doc_vec_length += tf ** 2
+#     return [(doc_id, doc_length, doc_vec_length)]
 
 
 def calculate_df(postings):
@@ -312,7 +300,7 @@ def calculate_df(postings):
     return postings.map(lambda x: (x[0], len(x[1])))
 
 
-def partition_postings_and_write(postings, bucket_name):
+def partition_postings_and_write(postings, bucket_name, folder):
     ''' A function that partitions the posting lists into buckets, writes out
   all posting lists in a bucket to disk, and returns the posting locations for
   each bucket. Partitioning should be done through the use of `token2bucket`
@@ -332,4 +320,4 @@ def partition_postings_and_write(postings, bucket_name):
       more details.
   '''
     b_w_pl = postings.map(lambda x: (token2bucket_id(x[0]), (x[0], x[1]))).groupByKey()
-    return b_w_pl.map(lambda x: InvertedIndex().write_a_posting_list(x, bucket_name))
+    return b_w_pl.map(lambda x: InvertedIndex().write_a_posting_list(x, bucket_name, folder))
