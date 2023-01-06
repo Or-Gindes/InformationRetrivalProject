@@ -20,20 +20,23 @@ LOCAL_DIR` if you store index data locally.
   Describe what worked well and what didn't work so well. What is the dominant
   factor behind the poor result? What can be done about it?
 
-
-Things we plan to try -
-
-Inverted index - 
-* Remove English stopwords + corpus stopwords
-* Stemming + stopwords removal
-* Lemmatization
-* word2vec? Query expansion
-
-Search functions -
-* cosine similarity tf-idf
-* binary ranking using titles
-* binary ranking using anchor text
-* BM25
-* PageRank
-* Ranking by page views
-* Deep learning
+Action items -
+* MIN- REQUIREMENTS
+  * Generate Body / Title InvertedIndex on query vocabulary - GCP
+  * Repeat with stemming
+  * Repeat with lemmatization
+  * Test query return time & MAP@40 - colab & gcp
+    * Make sure search_frontend runs in gcp
+    * SearchBody - only basic index
+    * SearchTitle - only basic index
+    * Weighted Search Function - basic, stemming, lemmatization
+  * Generate Full Body and Title InvertedIndex based on best results (stemming/lemmatization)
+  * Submission Report
+    * Qualitative evaluation of the top 10 results for one query where your engine
+    performed really well and one query where your engine did not perform well
+* Extra Credit
+  * Anchor text Index + Anchor search function
+  * PageViews Index + search
+  * PageRank Index + search
+  * Test Search function with Anchor / PageViews / PageRank weights
+  * Word2Vec Query expansion
