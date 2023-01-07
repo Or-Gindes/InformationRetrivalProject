@@ -8,9 +8,10 @@ import hashlib
 import nltk
 from nltk.stem.porter import *
 from nltk.corpus import stopwords
-import math
+from math import log
 from pathlib import Path
 import itertools
+import os
 
 # stemmer
 porterStemmer = PorterStemmer()
@@ -60,11 +61,11 @@ class MultiFileReader:
     def __init__(self):
         self._open_files = {}
 
-    def read(self, locs, n_bytes):
+    def read(self, locs, n_bytes, bin_folder="."):
         b = []
         for f_name, offset in locs:
             if f_name not in self._open_files:
-                self._open_files[f_name] = open(f_name, 'rb')
+                self._open_files[f_name] = open(os.path.join(bin_folder, f_name), 'rb')
             f = self._open_files[f_name]
             f.seek(offset)
             n_read = min(n_bytes, BLOCK_SIZE - offset)
@@ -157,13 +158,13 @@ class InvertedIndex:
         del state['_posting_list']
         return state
 
-    def posting_lists_iter(self):
+    def posting_lists_iter(self, bin_folder="."):
         """ A generator that reads one posting list from disk and yields
         a (word:str, [(doc_id:int, tf:int), ...]) tuple.
     """
         with closing(MultiFileReader()) as reader:
             for w, locs in self.posting_locs.items():
-                b = reader.read(locs, self.df[w] * TUPLE_SIZE)
+                b = reader.read(locs, self.df[w] * TUPLE_SIZE, bin_folder)
                 posting_list = []
                 for i in range(self.df[w]):
                     doc_id = int.from_bytes(b[i * TUPLE_SIZE:i * TUPLE_SIZE + 4], 'big')
@@ -212,12 +213,12 @@ class InvertedIndex:
                 posting_locs[w].extend(locs)
         return posting_locs
 
-    def read_posting_list(self, w):
+    def read_posting_list(self, w, bin_folder="."):
         # stem = porterStemmer.stem(w)
         if w in self.df.keys() and self.posting_locs.keys():
             with closing(MultiFileReader()) as reader:
                 locs = self.posting_locs[w]
-                b = reader.read(locs, self.df[w] * TUPLE_SIZE)
+                b = reader.read(locs, self.df[w] * TUPLE_SIZE, bin_folder)
                 posting_list = []
                 for i in range(self.df[w]):
                     doc_id = int.from_bytes(b[i * TUPLE_SIZE:i * TUPLE_SIZE + 4], 'big')
@@ -226,7 +227,7 @@ class InvertedIndex:
                 return posting_list
 
     def get_idf(self, w):  # calculate the body tf. return list
-        idf = math.log((self._N / self.df[w]), 2)
+        idf = log((self._N / self.df[w]), 2)
         return idf
 
 

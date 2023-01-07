@@ -22,21 +22,21 @@ LOCAL_DIR` if you store index data locally.
 
 Action items -
 * MIN- REQUIREMENTS
-  * Generate Body / Title InvertedIndex on query vocabulary - GCP
+  * Generate Body / Title InvertedIndex on query vocabulary - GCP - DONE
   * Repeat with stemming
   * Repeat with lemmatization
   * Test query return time & MAP@40 - colab & gcp
     * Make sure search_frontend runs in gcp
-    * SearchBody - only basic index
-    * SearchTitle - only basic index
-    * Weighted Search Function - basic, stemming, lemmatization
+    * SearchBody - only basic index - DONE
+    * SearchTitle - only basic index - DONE
+    * Weighted Search Function - basic, stemming, lemmatization - DONE (basic)
   * Generate Full Body and Title InvertedIndex based on best results (stemming/lemmatization)
   * Submission Report
     * Qualitative evaluation of the top 10 results for one query where your engine
     performed really well and one query where your engine did not perform well
 * Extra Credit
   * Anchor text Index + Anchor search function
-  * PageViews Index + search
-  * PageRank Index + search
-  * Test Search function with Anchor / PageViews / PageRank weights
+  * (HW1) PageViews Index + search
+  * (HW4) PageRank Index + search
+  * Test Search function with Anchor / PageViews / PageRank weights / BM25
   * Word2Vec Query expansion

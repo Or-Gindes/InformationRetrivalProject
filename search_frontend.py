@@ -1,13 +1,12 @@
 from flask import Flask, request, jsonify
 import pandas as pd
-from sklearn.metrics.pairwise import cosine_similarity
 from collections import defaultdict, Counter
 from contextlib import closing
 import re
 import nltk
 import pickle
 import numpy as np
-
+from math import sqrt
 # import pyspark
 # from graphframes import *
 import os
@@ -19,8 +18,10 @@ from nltk.stem.porter import *
 from nltk.corpus import stopwords
 from inverted_index_colab import *
 
-index_text = InvertedIndex().read_index(os.getcwd(), 'train_body_index')
-index_title = InvertedIndex().read_index(os.getcwd(), 'train_title_index')
+BODY_INDEX = 'train_body_index'
+TITLE_INDEX = 'train_title_index'
+index_text = InvertedIndex().read_index(os.path.join(os.getcwd(), BODY_INDEX), BODY_INDEX)
+index_title = InvertedIndex().read_index(os.path.join(os.getcwd(), TITLE_INDEX), TITLE_INDEX)
 # index_anchor = read_index('anchor_index', 'anchor')
 
 
@@ -86,8 +87,8 @@ def search():
 
     title_weight, body_weight = 0.5, 0.5
     merged_score = defaultdict(float)
-    sorted_cosin_sim_body = cosin_similarity_score(tokenized_query, index_text)
-    sorted_cosin_sim_title = cosin_similarity_score(tokenized_query, index_title)
+    sorted_cosin_sim_body = cosin_similarity_score(tokenized_query, index_text, BODY_INDEX)
+    sorted_cosin_sim_title = cosin_similarity_score(tokenized_query, index_title, TITLE_INDEX)
 
     for doc_id, sim_score in sorted_cosin_sim_body.items():
         merged_score[doc_id] += sim_score * body_weight
@@ -131,7 +132,7 @@ def search_body():
     if len(tokenized_query) == 0:
         return jsonify(res)
 
-    sorted_cosin_sim = cosin_similarity_score(tokenized_query, index_text)
+    sorted_cosin_sim = cosin_similarity_score(tokenized_query, index_text, BODY_INDEX)
     # add top 100 docs to result
     for i, doc_id in enumerate(sorted_cosin_sim.keys()):
         if i == 100:
@@ -175,7 +176,7 @@ def search_title():
     match_counter = defaultdict(int)
     # iterate DISTINCT query tokens and for each doc that has that word increase counter by 1
     for term in set(tokenized_query):
-        pls = index_title.read_posting_list(term)
+        pls = index_title.read_posting_list(term, TITLE_INDEX)
         for doc_id, _ in pls:
             match_counter[doc_id] += 1
 
@@ -305,7 +306,7 @@ def generate_graph(pages):
     return edges, vertices
 
 
-def cosin_similarity_score(tokenized_query, index):
+def cosin_similarity_score(tokenized_query, index, index_folder):
     """
     Support function to calculate cosin similarity
     :param index: InvertedIndex
@@ -317,7 +318,7 @@ def cosin_similarity_score(tokenized_query, index):
     tf_query = Counter(tokenized_query)
     query_vec_len = sum([c**2 for w, c in tf_query.items()])
     for term, count in tf_query.items():
-        pls = index.read_posting_list(term)
+        pls = index.read_posting_list(term, index_folder)
         term_idf = index.get_idf(term)
         for doc_id, doc_tf in pls:
             # normalized query tfidf
@@ -327,7 +328,7 @@ def cosin_similarity_score(tokenized_query, index):
             cosine_sim_numerator[doc_id] += doc_tfidf * query_tfidf
 
     # vector length of each doc is calculated at index creation
-    cosine_sim = {doc_id: numerator / math.sqrt(index.doc2vec_len[doc_id] * query_vec_len) for doc_id, numerator in cosine_sim_numerator.items()}
+    cosine_sim = {doc_id: numerator / sqrt(index.doc2vec_len[doc_id] * query_vec_len) for doc_id, numerator in cosine_sim_numerator.items()}
     sorted_cosin_sim = {k: v for k, v in sorted(cosine_sim.items(), key=lambda item: item[1], reverse=True)}
     return sorted_cosin_sim
 

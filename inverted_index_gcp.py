@@ -1,4 +1,3 @@
-import pyspark
 import sys
 from collections import Counter, OrderedDict
 import itertools
@@ -14,6 +13,7 @@ from google.cloud import storage
 from collections import defaultdict
 from contextlib import closing
 import hashlib
+from math import log
 
 
 def _hash(s):
@@ -72,11 +72,11 @@ class MultiFileReader:
     def __init__(self):
         self._open_files = {}
 
-    def read(self, locs, n_bytes):
+    def read(self, locs, n_bytes, bin_folder="."):
         b = []
         for f_name, offset in locs:
             if f_name not in self._open_files:
-                self._open_files[f_name] = open(f_name, 'rb')
+                self._open_files[f_name] = open(os.path.join(bin_folder, f_name), 'rb')
             f = self._open_files[f_name]
             f.seek(offset)
             n_read = min(n_bytes, BLOCK_SIZE - offset)
@@ -165,13 +165,13 @@ class InvertedIndex:
         del state['_posting_list']
         return state
 
-    def posting_lists_iter(self):
+    def posting_lists_iter(self, bin_folder="."):
         """ A generator that reads one posting list from disk and yields 
             a (word:str, [(doc_id:int, tf:int), ...]) tuple.
         """
         with closing(MultiFileReader()) as reader:
             for w, locs in self.posting_locs.items():
-                b = reader.read(locs[0], self.df[w] * TUPLE_SIZE)
+                b = reader.read(locs[0], self.df[w] * TUPLE_SIZE, bin_folder)
                 posting_list = []
                 for i in range(self.df[w]):
                     doc_id = int.from_bytes(b[i * TUPLE_SIZE:i * TUPLE_SIZE + 4], 'big')
@@ -205,6 +205,7 @@ class InvertedIndex:
                 locs = writer.write(b)
                 # save file locations to index
                 posting_locs[w].extend(locs)
+            writer._f.close()
             writer.upload_to_gcp()
             InvertedIndex._upload_posting_locs(bucket_id, posting_locs, bucket_name, folder)
         return bucket_id
@@ -215,8 +216,25 @@ class InvertedIndex:
             pickle.dump(posting_locs, f)
         client = storage.Client()
         bucket = client.bucket(bucket_name)
-        blob_posting_locs = bucket.blob(f"postings_gcp/{bucket_id}_posting_locs.pickle")
+        blob_posting_locs = bucket.blob(f"{folder}/{bucket_id}_posting_locs.pickle")
         blob_posting_locs.upload_from_filename(f"{bucket_id}_posting_locs.pickle")
+
+    def read_posting_list(self, w, bin_folder="."):
+        # stem = porterStemmer.stem(w)
+        if w in self.df.keys() and self.posting_locs.keys():
+            with closing(MultiFileReader()) as reader:
+                locs = self.posting_locs[w]
+                b = reader.read(locs, self.df[w] * TUPLE_SIZE, bin_folder)
+                posting_list = []
+                for i in range(self.df[w]):
+                    doc_id = int.from_bytes(b[i * TUPLE_SIZE:i * TUPLE_SIZE + 4], 'big')
+                    tf = int.from_bytes(b[i * TUPLE_SIZE + 4:(i + 1) * TUPLE_SIZE], 'big')
+                    posting_list.append((doc_id, tf))
+                return posting_list
+
+    def get_idf(self, w):  # calculate the body tf. return list
+        idf = log((self._N / self.df[w]), 2)
+        return idf
 
 
 NUM_BUCKETS = 124
@@ -321,3 +339,5 @@ def partition_postings_and_write(postings, bucket_name, folder):
   '''
     b_w_pl = postings.map(lambda x: (token2bucket_id(x[0]), (x[0], x[1]))).groupByKey()
     return b_w_pl.map(lambda x: InvertedIndex().write_a_posting_list(x, bucket_name, folder))
+
+
