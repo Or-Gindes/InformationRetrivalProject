@@ -70,7 +70,7 @@ def search():
         element is a tuple (wiki_id, title).
     """
     res = []
-    query = request.args.get('query', '')
+    query = 'apple' #request.args.get('query', '')
     if len(query) == 0:
         return jsonify(res)
     # BEGIN SOLUTION
@@ -81,8 +81,8 @@ def search():
 
     title_weight, body_weight = 0.5, 0.5
     merged_score = defaultdict(float)
-    sorted_cosin_sim_body = cosin_similarity_score(tokenized_query, index_text, BODY_INDEX)
-    sorted_cosin_sim_title = cosin_similarity_score(tokenized_query, index_title, TITLE_INDEX)
+    sorted_cosin_sim_body = cosin_similarity_score(tokenized_query, index_text)
+    sorted_cosin_sim_title = cosin_similarity_score(tokenized_query, index_title)
 
     for doc_id, sim_score in sorted_cosin_sim_body.items():
         merged_score[doc_id] += sim_score * body_weight
@@ -274,7 +274,7 @@ def get_pageview():
     Returns:
     --------
         list of ints:
-          list of page view numbers from August 2021 that correrspond to the
+          list of page view numbers from August 2021 that correspond to the
           provided list article IDs.
     """
     res = []
@@ -282,7 +282,8 @@ def get_pageview():
     if len(wiki_ids) == 0:
         return jsonify(res)
     # BEGIN SOLUTION
-
+    # pages_ranked = [(title, index_anchor.pageViews[id]) for id, title, _ in pages]
+    # pages_ranked.sort(key=lambda page: page[1], reverse=True)
     # END SOLUTION
     return jsonify(res)
 
@@ -309,7 +310,7 @@ def generate_graph(pages):
     return edges, vertices
 
 
-def cosin_similarity_score(tokenized_query, index, index_folder):
+def cosin_similarity_score(tokenized_query, index, index_folder="."):
     """
     Support function to calculate cosin similarity
     :param index: InvertedIndex
