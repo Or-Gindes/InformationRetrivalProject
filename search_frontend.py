@@ -3,12 +3,13 @@ import pandas as pd
 from collections import defaultdict, Counter
 import re
 import nltk
+from nltk.corpus import stopwords
 import pickle
 import numpy as np
 from math import sqrt, pow
 import os
-# import gensim.downloader as api
-# model = api.load('glove-wiki-gigaword-200')
+import gensim.downloader as api
+model = api.load('glove-wiki-gigaword-200')
 
 nltk.download('stopwords')
 TUPLE_SIZE = 6
@@ -82,14 +83,17 @@ def search():
         return jsonify(res)
 
     # # query expansion
+    # word2vec_sim_score = defaultdict(float)
     # for term in tokenized_query:
+    #     word2vec_sim_score[term] = 1.0
     #     try:
-    #         similar_terms = model.most_similar(term, topn=2)
+    #         similar_terms = model.most_similar(term, topn=3)
     #     except KeyError:
     #         continue
     #     for sim_term, similarity in similar_terms:
-    #         tokenized_query.append(sim_term)
-
+    #         word2vec_sim_score[sim_term] = max(similarity, word2vec_sim_score[sim_term])
+    #
+    # tokenized_query = list(word2vec_sim_score.keys())
     title_weight, body_weight, anchor_weight = 0.2, 0.6, 0.2
     merged_score = defaultdict(float)
     sorted_cosin_sim_body = cosin_similarity_score(tokenized_query, index_text)
@@ -337,6 +341,8 @@ def cosin_similarity_score(tokenized_query, index, index_folder="."):
     query_norm = sum([pow((tf_term / query_len) * index.get_idf(term), 2) for term, tf_term in tf_query.items()])
     for term, count in tf_query.items():
         pls = index.read_posting_list(term, index_folder)
+        if pls is None:
+            pls = []
         term_idf = index.get_idf(term)
         # normalized query tfidf
         query_tfidf = count / query_len * term_idf
@@ -354,6 +360,5 @@ def cosin_similarity_score(tokenized_query, index, index_folder="."):
 
 
 if __name__ == '__main__':
-    search()
     # run the Flask RESTful API, make the server publicly available (host='0.0.0.0') on port 8080
     app.run(host='0.0.0.0', port=8080, debug=True)
