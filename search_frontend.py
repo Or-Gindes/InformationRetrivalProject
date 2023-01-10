@@ -8,8 +8,8 @@ import pickle
 import numpy as np
 from math import sqrt, pow
 import os
-import gensim.downloader as api
-model = api.load('glove-wiki-gigaword-200')
+# import gensim.downloader as api
+# model = api.load('glove-wiki-gigaword-200')
 
 nltk.download('stopwords')
 TUPLE_SIZE = 6
@@ -22,6 +22,9 @@ ANCHOR_INDEX = 'train_anchor_index'
 index_text = InvertedIndex().read_index(os.path.join(os.getcwd(), BODY_INDEX), BODY_INDEX)
 index_title = InvertedIndex().read_index(os.path.join(os.getcwd(), TITLE_INDEX), TITLE_INDEX)
 index_anchor = InvertedIndex().read_index(os.path.join(os.getcwd(), ANCHOR_INDEX), ANCHOR_INDEX)
+
+index_dict = {BODY_INDEX: index_text, TITLE_INDEX: index_title, ANCHOR_INDEX: index_anchor}
+AVG_DOC_LEN = {index_name: sum([data[1] for doc_id, data in index.doc_data.items()]) / index._N for index_name, index in index_dict.items()}
 
 
 class MyFlaskApp(Flask):
@@ -73,7 +76,7 @@ def search():
         element is a tuple (wiki_id, title).
     """
     res = []
-    query = request.args.get('query', '')
+    query = 'apple'#request.args.get('query', '')
     if len(query) == 0:
         return jsonify(res)
     # BEGIN SOLUTION
@@ -96,9 +99,9 @@ def search():
     # tokenized_query = list(word2vec_sim_score.keys())
     title_weight, body_weight, anchor_weight = 0.2, 0.6, 0.2
     merged_score = defaultdict(float)
-    sorted_cosin_sim_body = cosin_similarity_score(tokenized_query, index_text)
-    sorted_cosin_sim_title = cosin_similarity_score(tokenized_query, index_title)
-    sorted_cosin_sim_anchor = cosin_similarity_score(tokenized_query, index_anchor)
+    sorted_cosin_sim_body = bm25_score(tokenized_query, index_text, BODY_INDEX)
+    sorted_cosin_sim_title = bm25_score(tokenized_query, index_title, TITLE_INDEX)
+    sorted_cosin_sim_anchor = bm25_score(tokenized_query, index_anchor, ANCHOR_INDEX)
 
     for doc_id, sim_score in sorted_cosin_sim_body.items():
         merged_score[doc_id] += sim_score * body_weight
@@ -359,6 +362,37 @@ def cosin_similarity_score(tokenized_query, index, index_folder="."):
     return sorted_cosin_sim
 
 
+def bm25_score(tokenized_query, index, index_folder=".", b=0.75, k=1.5):
+    """
+    Support function to calculate bm25 score
+    :param index: InvertedIndex
+    :param tokenized_query: list of query tokens post-processing
+    :return: sorted dictionary of doc_id: bm25_similarity_score
+    """
+    score = defaultdict(float)
+    query_len = len(tokenized_query)
+    tf_query = Counter(tokenized_query)
+    avg_dl = AVG_DOC_LEN[index_folder]
+    for term, count in tf_query.items():
+        pls = index.read_posting_list(term)
+        if pls is None:
+            pls = []
+        term_idf = index.get_idf(term)
+        # normalized query tfidf
+        query_tf = count / query_len
+        for doc_id, doc_tf in pls:
+            doc_len = index.doc_data[doc_id][1]
+            # normalized document tfidf
+            doc_tfidf = doc_tf / doc_len * term_idf
+            numerator = ((k + 1) * doc_tfidf) * ((k + 1) * query_tf)
+            denumerator = k * (1 - b + b * doc_len/avg_dl) + (doc_tf / doc_len) * query_tf
+            score[doc_id] += numerator / denumerator
+
+    sorted_bm25 = {k: v for k, v in sorted(score.items(), key=lambda item: item[1], reverse=True)}
+    return sorted_bm25
+
+
 if __name__ == '__main__':
+    search()
     # run the Flask RESTful API, make the server publicly available (host='0.0.0.0') on port 8080
     app.run(host='0.0.0.0', port=8080, debug=True)
