@@ -5,8 +5,10 @@ import re
 import nltk
 import pickle
 import numpy as np
-from math import sqrt
+from math import sqrt, pow
 import os
+# import gensim.downloader as api
+# model = api.load('glove-wiki-gigaword-200')
 
 nltk.download('stopwords')
 TUPLE_SIZE = 6
@@ -70,7 +72,7 @@ def search():
         element is a tuple (wiki_id, title).
     """
     res = []
-    query = 'apple' #request.args.get('query', '')
+    query = request.args.get('query', '')
     if len(query) == 0:
         return jsonify(res)
     # BEGIN SOLUTION
@@ -79,15 +81,27 @@ def search():
     if len(tokenized_query) == 0:
         return jsonify(res)
 
-    title_weight, body_weight = 0.5, 0.5
+    # # query expansion
+    # for term in tokenized_query:
+    #     try:
+    #         similar_terms = model.most_similar(term, topn=2)
+    #     except KeyError:
+    #         continue
+    #     for sim_term, similarity in similar_terms:
+    #         tokenized_query.append(sim_term)
+
+    title_weight, body_weight, anchor_weight = 0.2, 0.6, 0.2
     merged_score = defaultdict(float)
     sorted_cosin_sim_body = cosin_similarity_score(tokenized_query, index_text)
     sorted_cosin_sim_title = cosin_similarity_score(tokenized_query, index_title)
+    sorted_cosin_sim_anchor = cosin_similarity_score(tokenized_query, index_anchor)
 
     for doc_id, sim_score in sorted_cosin_sim_body.items():
         merged_score[doc_id] += sim_score * body_weight
     for doc_id, sim_score in sorted_cosin_sim_title.items():
         merged_score[doc_id] += sim_score * title_weight
+    for doc_id, sim_score in sorted_cosin_sim_anchor.items():
+        merged_score[doc_id] += sim_score * anchor_weight
 
     sorted_merged_score = {k: v for k, v in sorted(merged_score.items(), key=lambda item: item[1], reverse=True)}
     # add top 100 docs to result
@@ -320,24 +334,26 @@ def cosin_similarity_score(tokenized_query, index, index_folder="."):
     cosine_sim_numerator = defaultdict(float)
     query_len = len(tokenized_query)
     tf_query = Counter(tokenized_query)
-    query_vec_len = sum([c ** 2 for w, c in tf_query.items()])
+    query_norm = sum([pow((tf_term / query_len) * index.get_idf(term), 2) for term, tf_term in tf_query.items()])
     for term, count in tf_query.items():
         pls = index.read_posting_list(term, index_folder)
         term_idf = index.get_idf(term)
+        # normalized query tfidf
+        query_tfidf = count / query_len * term_idf
         for doc_id, doc_tf in pls:
-            # normalized query tfidf
-            query_tfidf = count / query_len * term_idf
+            doc_len = index.doc_data[doc_id][1]
             # normalized document tfidf
-            doc_tfidf = doc_tf / index.doc2len[doc_id] * term_idf
+            doc_tfidf = doc_tf / doc_len * term_idf
             cosine_sim_numerator[doc_id] += doc_tfidf * query_tfidf
 
     # vector length of each doc is calculated at index creation
-    cosine_sim = {doc_id: numerator / sqrt(index.doc2vec_len[doc_id] * query_vec_len) for doc_id, numerator in
+    cosine_sim = {doc_id: numerator / sqrt(index.doc_data[doc_id][0] * query_norm) for doc_id, numerator in
                   cosine_sim_numerator.items()}
     sorted_cosin_sim = {k: v for k, v in sorted(cosine_sim.items(), key=lambda item: item[1], reverse=True)}
     return sorted_cosin_sim
 
 
 if __name__ == '__main__':
+    search()
     # run the Flask RESTful API, make the server publicly available (host='0.0.0.0') on port 8080
     app.run(host='0.0.0.0', port=8080, debug=True)

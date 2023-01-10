@@ -104,7 +104,7 @@ TF_MASK = 2 ** 16 - 1  # Masking the 16 low bits of an integer
 class InvertedIndex:
     def __init__(self, docs={}):
         """ Initializes the inverted index and add documents to it (if provided).
-        Parameters:
+        Parameters:`
         -----------
           docs: dict mapping doc_id to list of tokens
         """
@@ -112,23 +112,21 @@ class InvertedIndex:
         self.df = Counter()
         # stores total frequency per term
         self.term_total = Counter()
-        # stores posting list per term while building the index (internally), 
+        # stores posting list per term while building the index (internally),
         # otherwise too big to store in memory.
         self._posting_list = defaultdict(list)
-        # mapping a term to posting file locations, which is a list of 
+        # mapping a term to posting file locations, which is a list of
         # (file_name, offset) pairs. Since posting lists are big we are going to
-        # write them to disk and just save their location in this list. We are 
+        # write them to disk and just save their location in this list. We are
         # using the MultiFileWriter helper class to write fixed-size files and store
-        # for each term/posting list its list of locations. The offset represents 
+        # for each term/posting list its list of locations. The offset represents
         # the number of bytes from the beginning of the file where the posting list
-        # starts. 
+        # starts.
         self.posting_locs = defaultdict(list)
         # Document Number
         self._N = 0
         # Dict for document length
-        self.doc2len = {}
-        # dict for document VectorLength
-        self.doc2vec_len = {}
+        self.doc_data = defaultdict()
         # dict to match doc_id to title for results
         self.doc2title = {}
 
@@ -233,7 +231,7 @@ class InvertedIndex:
                 return posting_list
 
     def get_idf(self, w):  # calculate the body tf. return list
-        idf = log((self._N / self.df[w]), 2)
+        idf = log(self._N / (self.df[w] + 1), 2)
         return idf
 
 

@@ -119,9 +119,7 @@ class InvertedIndex:
         # Document Number
         self._N = 0
         # Dict for document length
-        self.doc2len = {}
-        # dict for document VectorLength
-        self.doc2vec_len = {}
+        self.doc_data = defaultdict()
         # dict to match doc_id to title for results
         self.doc2title = {}
 
@@ -130,7 +128,7 @@ class InvertedIndex:
 
     def add_doc(self, doc_id, tokens):
         """ Adds a document to the index with a given `doc_id` and tokens. It counts
-        the tf of tokens, then update the index (in memory, no storage 
+        the tf of tokens, then update the index (in memory, no storage
         side-effects).
     """
         self._N += 1
@@ -152,7 +150,7 @@ class InvertedIndex:
 
     def __getstate__(self):
         """ Modify how the object is pickled by removing the internal posting lists
-        from the object's state dictionary. 
+        from the object's state dictionary.
     """
         state = self.__dict__.copy()
         del state['_posting_list']
@@ -227,7 +225,7 @@ class InvertedIndex:
                 return posting_list
 
     def get_idf(self, w):  # calculate the body tf. return list
-        idf = log((self._N / self.df[w]), 2)
+        idf = log(self._N / (self.df[w] + 1), 2)
         return idf
 
 
@@ -256,51 +254,6 @@ def partition_postings_and_write(postings, folder):
     """
     b_w_pl = postings.map(lambda x: (token2bucket_id(x[0]), (x[0], x[1]))).groupByKey()
     return b_w_pl.map(lambda x: InvertedIndex().write_a_posting_list(x, folder))
-
-
-def word_count(text, id):
-    """ Count the frequency of each word in `text` (tf) that is not included in
-  `all_stopwords` and return entries that will go into our posting lists.
-  Parameters:
-  -----------
-    text: str
-      Text of one document
-    id: int
-      Document id
-  Returns:
-  --------
-    List of tuples
-      A list of (token, (doc_id, tf)) pairs
-      for example: [("Anarchism", (12, 5)), ...]
-  """
-    tokens = [token.group() for token in RE_WORD.finditer(text.lower())]
-    filtered_tokens = [tok for tok in tokens if (tok not in all_stopwords)]
-    doc_word_count = Counter(filtered_tokens)
-    return [(tok, (id, tf)) for tok, tf in doc_word_count.items()]
-
-
-def get_doc_len(text, doc_id):
-    """ Count document filtered length for storage in index as well as document vector length for RDD calculations
-  Parameters:
-  -----------
-    text: str
-      Text of one document
-    id: int
-      Document id
-  Returns:
-  --------
-    List of tuples
-      A list of (doc_id, doc_length, SumOfSquares(tf))
-  """
-    tokens = [token.group() for token in RE_WORD.finditer(text.lower())]
-    filtered_tokens = [tok for tok in tokens if (tok not in all_stopwords)]
-    doc_word_count = Counter(filtered_tokens)
-    doc_length = 0
-    doc_vec_length = 0
-    for tok, tf in doc_word_count.items():
-        doc_length += tf
-        doc_vec_length += tf ** 2
-    return [(doc_id, doc_length, doc_vec_length)]
 
 
 def reduce_word_counts(unsorted_pl):
