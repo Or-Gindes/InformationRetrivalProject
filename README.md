@@ -1,42 +1,40 @@
-# InformationRetrivalProject
+# Information Retrival Project
+Author: Or Gindes\
+Team: CC\
+Submission Date: 15-Jan-2023
 
-Min Requirements -
-* Functional and testable search engine -
-  * OR - prepare mini-search engine in colab
-  * Yonatan - prepare bucket & cluster in gcp and deploy mini-engine
-* Efficiency - No query takes longer than 35 seconds to process
-* Quality - MAP@40 > 0.25
-* Report - 
-  * A link to a Google Storage Bucket, where all indexing data you calculated resides
-and is publicly accessible. Instructions for making your bucket public are here. 
-  * List all index files with human-readable sizes, pasted in an appendix at the end of your report. 
-  This does not count towards the page limit. You can use the command `gsutil du -ch gs://BUCKET_NAME` to generate this listing or `du -ch
-LOCAL_DIR` if you store index data locally. 
-  * A description of key experiments you ran, how you evaluated them, and the key findings/takeaways. 
-  * A graph showing the engine performance for each major version of your implementation. 
-  * A graph showing the engine's average retrieval time for each major version of your implementation.
-  * Qualitative evaluation of the top 10 results for one query where your engine
-  performed really well and one query where your engine did not perform well.
-  Describe what worked well and what didn't work so well. What is the dominant
-  factor behind the poor result? What can be done about it?
+Code Structure and Flow -
+* inverted_index_gcp / inverted_index_colab - 
+  * Used to generate and load InvertedIndices which allows to prepare and retrieve 
+  document and query information for ranking calculations.
+  * The code is mostly used a provided for assignment 3 but altered to allow .bin files
+  to be saved in specified folders to solve the issue of overwriting when running multiple 
+  indices in one session.
+* createTrainInvertedIndices - this jupyter notebook was used to generate the indices with
+  including some adjustments for each iteration such as running only on training vocabulary
+  (i.e. words found in train_queries), stemming or lemmatization.
+* search_frontend - Implementation of all search functions
+  * search_body - based on tfidf and cosine similarity metric
+  * search_title & search_anchor - based on binary match function. 
+  Return articles which have the highest number of matching terms
+  * get_pageView and get_pageRank - return relevant values for document ids provided
+  * search - the final search function
+    * Final variation uses a weighted cosine similarity for body, title and anchors
+    * Multiple weights allocation were tested before final ones were chosen
+    * bm25 similarity score was also tested with multiple weights and k,b values but results were not improved
+    * likewise, stemming and lemmatization have also not yielded improved results
+      (stemming was generated for body, title and anchor while lemmatization was only tested on text portion 
+    due to it being the largest and therefor the one most likely to benefit from the process)
+    * gensim Word2Vec model was also tested for query expansion
+      * The query was expended using top2/top3 most similar terms
+      * response time increased but MAP@40 didn't improve with these changes
+      * Score was augmented with the similarity metric (original tokens didn't have their score changed)
+      but this too failed to yield improved results.
 
-Action items -
-* MIN- REQUIREMENTS
-  * ~~Generate Body / Title InvertedIndex on query vocabulary - GCP~~ - **DONE**
-  * Repeat with stemming - Generated, need to test
-  * Repeat with lemmatization - Need to generate & test
-  * Test query return time & MAP@40 - colab & gcp
-    * Make sure search_frontend runs in gcp
-    * ~~SearchBody - only basic index~~ - **DONE**
-    * ~~SearchTitle - only basic index~~ - **DONE**
-    * Weighted Search Function - ~~basic~~, stemming, lemmatization
-  * Generate Full Body and Title InvertedIndex based on best results (stemming/lemmatization)
-  * Submission Report
-    * Qualitative evaluation of the top 10 results for one query where your engine
-    performed really well and one query where your engine did not perform well
-* Extra Credit
-  * ~~Anchor text Index + Anchor search function~~ - **DONE**
-  * (HW1) PageViews Index + search - Generated Data in bucket, need to write function
-  * (HW4) PageRank Index + search
-  * Test Search function with Anchor / PageViews / PageRank weights / BM25
-  * Word2Vec Query expansion
+
+Important Links -
+* GCP Bucket - https://console.cloud.google.com/storage/browser/201640042_project
+  * TextIndex - https://console.cloud.google.com/storage/browser/201640042_project/full_body_index
+  * TitleIndex - https://console.cloud.google.com/storage/browser/201640042_project/full_title_index
+  * AnchorIndex - https://console.cloud.google.com/storage/browser/201640042_project/full_anchor_index
+* Git Repository - https://github.com/Or-Gindes/InformationRetrivalProject

@@ -4,27 +4,39 @@ from collections import defaultdict, Counter
 import re
 import nltk
 from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer, PorterStemmer
 import pickle
 import numpy as np
 from math import sqrt, pow
 import os
+from inverted_index_colab import *
 # import gensim.downloader as api
 # model = api.load('glove-wiki-gigaword-200')
 
 nltk.download('stopwords')
+nltk.download('wordnet')
+nltk.download('omw-1.4')
 TUPLE_SIZE = 6
 TF_MASK = 2 ** 16 - 1
-from inverted_index_colab import *
 
-BODY_INDEX = 'train_body_index'
-TITLE_INDEX = 'train_title_index'
-ANCHOR_INDEX = 'train_anchor_index'
+BODY_INDEX = 'full_body_index'
+TITLE_INDEX = 'full_title_index'
+ANCHOR_INDEX = 'full_anchor_index'
 index_text = InvertedIndex().read_index(os.path.join(os.getcwd(), BODY_INDEX), BODY_INDEX)
 index_title = InvertedIndex().read_index(os.path.join(os.getcwd(), TITLE_INDEX), TITLE_INDEX)
 index_anchor = InvertedIndex().read_index(os.path.join(os.getcwd(), ANCHOR_INDEX), ANCHOR_INDEX)
 
 index_dict = {BODY_INDEX: index_text, TITLE_INDEX: index_title, ANCHOR_INDEX: index_anchor}
-AVG_DOC_LEN = {index_name: sum([data[1] for doc_id, data in index.doc_data.items()]) / index._N for index_name, index in index_dict.items()}
+AVG_DOC_LEN = {index_name: sum([data[1] for doc_id, data in index.doc_data.items()]) / index._N for index_name, index in
+               index_dict.items()}
+
+with open("pageviews-202108-user.pkl") as f:
+    PAGE_VIEWS = pickle.load(f.read())
+with open("pageranks-org.pkl") as f:
+    PAGERANK = pickle.load(f.read())
+
+lemmatizer = WordNetLemmatizer()
+stemmer = PorterStemmer()
 
 
 class MyFlaskApp(Flask):
@@ -41,7 +53,7 @@ corpus_stopwords = ['category', 'references', 'also', 'links', 'extenal', 'see',
 ALL_STOPWORDS = stopwords_frozen.union(corpus_stopwords)
 
 
-def tokenize(text):
+def tokenize(text, stem=False, lemm=False):
     """
     This function turns text into a list of tokens. Moreover, it filters stopwords.
 
@@ -54,6 +66,10 @@ def tokenize(text):
 
     list_of_tokens = [token.group() for token in RE_WORD.finditer(text.lower()) if
                       token.group() not in ALL_STOPWORDS]
+    if stem:
+        return [stemmer.stem(tok) for tok in list_of_tokens]
+    if lemm:
+        return [lemmatizer.lemmatize(tok) for tok in list_of_tokens]
     return list_of_tokens
 
 
@@ -76,7 +92,7 @@ def search():
         element is a tuple (wiki_id, title).
     """
     res = []
-    query = 'apple'#request.args.get('query', '')
+    query = request.args.get('query', '')
     if len(query) == 0:
         return jsonify(res)
     # BEGIN SOLUTION
@@ -97,17 +113,17 @@ def search():
     #         word2vec_sim_score[sim_term] = max(similarity, word2vec_sim_score[sim_term])
     #
     # tokenized_query = list(word2vec_sim_score.keys())
-    title_weight, body_weight, anchor_weight = 0.2, 0.6, 0.2
+    title_weight, body_weight, anchor_weight = 0.35, 0.5, 0.15
     merged_score = defaultdict(float)
-    sorted_cosin_sim_body = bm25_score(tokenized_query, index_text, BODY_INDEX)
-    sorted_cosin_sim_title = bm25_score(tokenized_query, index_title, TITLE_INDEX)
-    sorted_cosin_sim_anchor = bm25_score(tokenized_query, index_anchor, ANCHOR_INDEX)
+    sorted_score_body = cosin_similarity_score(tokenized_query, index_text, BODY_INDEX)
+    sorted_score_title = cosin_similarity_score(tokenized_query, index_title, TITLE_INDEX)
+    sorted__score_anchor = cosin_similarity_score(tokenized_query, index_anchor, ANCHOR_INDEX)
 
-    for doc_id, sim_score in sorted_cosin_sim_body.items():
+    for doc_id, sim_score in sorted_score_body.items():
         merged_score[doc_id] += sim_score * body_weight
-    for doc_id, sim_score in sorted_cosin_sim_title.items():
+    for doc_id, sim_score in sorted_score_title.items():
         merged_score[doc_id] += sim_score * title_weight
-    for doc_id, sim_score in sorted_cosin_sim_anchor.items():
+    for doc_id, sim_score in sorted__score_anchor.items():
         merged_score[doc_id] += sim_score * anchor_weight
 
     sorted_merged_score = {k: v for k, v in sorted(merged_score.items(), key=lambda item: item[1], reverse=True)}
@@ -262,20 +278,14 @@ def get_pagerank():
     Returns:
     --------
         list of floats:
-          list of PageRank scores that correrspond to the provided article IDs.
+          list of PageRank scores that correspond to the provided article IDs.
     """
     res = []
     wiki_ids = request.get_json()
     if len(wiki_ids) == 0:
         return jsonify(res)
     # BEGIN SOLUTION
-    # edges, vertices = generate_graph(pages_links)
-    # edgesDF = edges.toDF(['src', 'dst']).repartition(4, 'src')
-    # verticesDF = vertices.toDF(['id']).repartition(4, 'id')
-    # g = GraphFrame(verticesDF, edgesDF)
-    # pr_results = g.pageRank(resetProbability=0.15, maxIter=10)
-    # pr = pr_results.vertices.select("id", "pagerank")
-    # pr = pr.sort(col('pagerank').desc())
+    res.extend([PAGERANK[doc_id] for doc_id in wiki_ids])
     # END SOLUTION
     return jsonify(res)
 
@@ -303,32 +313,9 @@ def get_pageview():
     if len(wiki_ids) == 0:
         return jsonify(res)
     # BEGIN SOLUTION
-    # pages_ranked = [(title, index_anchor.pageViews[id]) for id, title, _ in pages]
-    # pages_ranked.sort(key=lambda page: page[1], reverse=True)
+    res.extend([PAGE_VIEWS[doc_id] for doc_id in wiki_ids])
     # END SOLUTION
     return jsonify(res)
-
-
-def generate_graph(pages):
-    """ Compute the directed graph generated by wiki links.
-  Parameters:
-  -----------
-    pages: RDD
-      An RDD where each row consists of one wikipedia articles with 'id' and
-      'anchor_text'.
-  Returns:
-  --------
-    edges: RDD
-      An RDD where each row represents an edge in the directed graph created by
-      the wikipedia links. The first entry should the source page id and the
-      second entry is the destination page id. No duplicates should be present.
-    vertices: RDD
-      An RDD where each row represents a vetrix (node) in the directed graph
-      created by the wikipedia links. No duplicates should be present.
-  """
-    edges = pages.map(lambda page: [(page[0], link_id.id) for link_id in page[1]]).flatMap(lambda ls: ls).distinct()
-    vertices = edges.map(lambda edge: [edge[0], edge[1]]).flatMap(lambda ls: ls).distinct().map(lambda x: (x,))
-    return edges, vertices
 
 
 def cosin_similarity_score(tokenized_query, index, index_folder="."):
@@ -385,7 +372,7 @@ def bm25_score(tokenized_query, index, index_folder=".", b=0.75, k=1.5):
             # normalized document tfidf
             doc_tfidf = doc_tf / doc_len * term_idf
             numerator = ((k + 1) * doc_tfidf) * ((k + 1) * query_tf)
-            denumerator = k * (1 - b + b * doc_len/avg_dl) + (doc_tf / doc_len) * query_tf
+            denumerator = k * (1 - b + b * doc_len / avg_dl) + (doc_tf / doc_len) * query_tf
             score[doc_id] += numerator / denumerator
 
     sorted_bm25 = {k: v for k, v in sorted(score.items(), key=lambda item: item[1], reverse=True)}
@@ -393,6 +380,5 @@ def bm25_score(tokenized_query, index, index_folder=".", b=0.75, k=1.5):
 
 
 if __name__ == '__main__':
-    search()
     # run the Flask RESTful API, make the server publicly available (host='0.0.0.0') on port 8080
     app.run(host='0.0.0.0', port=8080, debug=True)
