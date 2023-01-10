@@ -31,9 +31,10 @@ AVG_DOC_LEN = {index_name: sum([data[1] for doc_id, data in index.doc_data.items
                index_dict.items()}
 
 with open("pageviews-202108-user.pkl", 'rb') as f:
-    PAGE_VIEWS = pickle.loads(f.read())
+    PAGE_VIEWS = defaultdict(int,pickle.loads(f.read()))
+    
 with open("pagerank_org.pkl", 'rb') as f:
-    PAGERANK = pickle.loads(f.read())
+    PAGERANK = defaultdict(int,pickle.loads(f.read()))
 
 lemmatizer = WordNetLemmatizer()
 stemmer = PorterStemmer()
