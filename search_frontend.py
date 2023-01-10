@@ -30,10 +30,10 @@ index_dict = {BODY_INDEX: index_text, TITLE_INDEX: index_title, ANCHOR_INDEX: in
 AVG_DOC_LEN = {index_name: sum([data[1] for doc_id, data in index.doc_data.items()]) / index._N for index_name, index in
                index_dict.items()}
 
-with open("pageviews-202108-user.pkl") as f:
-    PAGE_VIEWS = pickle.load(f.read())
-with open("pageranks-org.pkl") as f:
-    PAGERANK = pickle.load(f.read())
+with open("pageviews-202108-user.pkl", 'rb') as f:
+    PAGE_VIEWS = pickle.loads(f.read())
+with open("pagerank_org.pkl", 'rb') as f:
+    PAGERANK = pickle.loads(f.read())
 
 lemmatizer = WordNetLemmatizer()
 stemmer = PorterStemmer()
@@ -126,9 +126,19 @@ def search():
     for doc_id, sim_score in sorted__score_anchor.items():
         merged_score[doc_id] += sim_score * anchor_weight
 
-    sorted_merged_score = {k: v for k, v in sorted(merged_score.items(), key=lambda item: item[1], reverse=True)}
+    term_page_ranking = {}
+    term_page_views = {}
+    for doc_id in merged_score.keys():
+        term_page_ranking[doc_id] = PAGERANK[doc_id]
+        term_page_views[doc_id] = PAGE_VIEWS[doc_id]
+
+    pagerank = {key: rank for rank, key in enumerate(sorted(term_page_ranking, key=term_page_ranking.get), 1)}
+    pageviews = {key: rank for rank, key in enumerate(sorted(term_page_views, key=term_page_views.get), 1)}
+
+    adjusted_scores = {k: v * (pagerank[k] + pageviews[k]) for k, v in merged_score.items()}
+    sorted_adjusted_scores = {k: v for k, v in sorted(adjusted_scores.items(), key=lambda item: item[1], reverse=True)}
     # add top 100 docs to result
-    for i, doc_id in enumerate(sorted_merged_score.keys()):
+    for i, doc_id in enumerate(sorted_adjusted_scores.keys()):
         if i == 100:
             break
         res.append((doc_id, index_text.doc2title[doc_id]))
