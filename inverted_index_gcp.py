@@ -125,8 +125,8 @@ class InvertedIndex:
         self.posting_locs = defaultdict(list)
         # Document Number
         self._N = 0
-        # Dict for document length
-        self.doc_data = defaultdict()
+        # dict for document (VectorLength, length)
+        self.doc_data = defaultdict(int)
         # dict to match doc_id to title for results
         self.doc2title = {}
 
@@ -169,7 +169,7 @@ class InvertedIndex:
         """
         with closing(MultiFileReader()) as reader:
             for w, locs in self.posting_locs.items():
-                b = reader.read(locs[0], self.df[w] * TUPLE_SIZE, bin_folder)
+                b = reader.read(locs, self.df[w] * TUPLE_SIZE, bin_folder)
                 posting_list = []
                 for i in range(self.df[w]):
                     doc_id = int.from_bytes(b[i * TUPLE_SIZE:i * TUPLE_SIZE + 4], 'big')
@@ -218,7 +218,6 @@ class InvertedIndex:
         blob_posting_locs.upload_from_filename(f"{bucket_id}_posting_locs.pickle")
 
     def read_posting_list(self, w, bin_folder="."):
-        # stem = porterStemmer.stem(w)
         if w in self.df.keys() and self.posting_locs.keys():
             with closing(MultiFileReader()) as reader:
                 locs = self.posting_locs[w]
@@ -230,7 +229,7 @@ class InvertedIndex:
                     posting_list.append((doc_id, tf))
                 return posting_list
 
-    def get_idf(self, w):  # calculate the body tf. return list
+    def get_idf(self, w):
         idf = log(self._N / (self.df[w] + 1), 2)
         return idf
 
@@ -240,27 +239,6 @@ NUM_BUCKETS = 124
 
 def token2bucket_id(token):
     return int(_hash(token), 16) % NUM_BUCKETS
-
-
-# def word_count(text, id):
-#     ''' Count the frequency of each word in `text` (tf) that is not included in
-#   `all_stopwords` and return entries that will go into our posting lists.
-#   Parameters:
-#   -----------
-#     text: str
-#       Text of one document
-#     id: int
-#       Document id
-#   Returns:
-#   --------
-#     List of tuples
-#       A list of (token, (doc_id, tf)) pairs
-#       for example: [("Anarchism", (12, 5)), ...]
-#   '''
-#     tokens = [token.group() for token in RE_WORD.finditer(text.lower())]
-#     filtered_tokens = [tok for tok in tokens if (tok not in all_stopwords)]
-#     doc_word_count = Counter(filtered_tokens)
-#     return [(tok, (id, tf)) for tok, tf in doc_word_count.items()]
 
 
 def reduce_word_counts(unsorted_pl):
@@ -278,30 +256,6 @@ def reduce_word_counts(unsorted_pl):
     return sorted_pl
 
 
-# def get_doc_len(text, doc_id):
-#     """ Count document filtered length for storage in index as well as document vector length for RDD calculations
-#   Parameters:
-#   -----------
-#     text: str
-#       Text of one document
-#     id: int
-#       Document id
-#   Returns:
-#   --------
-#     List of tuples
-#       A list of (doc_id, doc_length, SumOfSquares(tf))
-#   """
-#     tokens = [token.group() for token in RE_WORD.finditer(text.lower())]
-#     filtered_tokens = [tok for tok in tokens if (tok not in all_stopwords)]
-#     doc_word_count = Counter(filtered_tokens)
-#     doc_length = 0
-#     doc_vec_length = 0
-#     for tok, tf in doc_word_count.items():
-#         doc_length += tf
-#         doc_vec_length += tf ** 2
-#     return [(doc_id, doc_length, doc_vec_length)]
-
-
 def calculate_df(postings):
     ''' Takes a posting list RDD and calculate the df for each token.
   Parameters:
@@ -317,7 +271,7 @@ def calculate_df(postings):
 
 
 def partition_postings_and_write(postings, bucket_name, folder):
-    ''' A function that partitions the posting lists into buckets, writes out
+    """ A function that partitions the posting lists into buckets, writes out
   all posting lists in a bucket to disk, and returns the posting locations for
   each bucket. Partitioning should be done through the use of `token2bucket`
   above. Writing to disk should use the function  `write_a_posting_list`, a
@@ -334,8 +288,6 @@ def partition_postings_and_write(postings, bucket_name, folder):
       posting locations maintain a list for each word of file locations and
       offsets its posting list was written to. See `write_a_posting_list` for
       more details.
-  '''
+  """
     b_w_pl = postings.map(lambda x: (token2bucket_id(x[0]), (x[0], x[1]))).groupByKey()
     return b_w_pl.map(lambda x: InvertedIndex().write_a_posting_list(x, bucket_name, folder))
-
-

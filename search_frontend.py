@@ -4,20 +4,24 @@ from collections import defaultdict, Counter
 import re
 import nltk
 from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer, PorterStemmer
 import pickle
 import numpy as np
 from math import sqrt, pow
 import os
-from inverted_index_colab import *
+from nltk.stem import WordNetLemmatizer, PorterStemmer
 # import gensim.downloader as api
 # model = api.load('glove-wiki-gigaword-200')
+from inverted_index_gcp import *
+# from inverted_index_colab import *
 
 nltk.download('stopwords')
 nltk.download('wordnet')
 nltk.download('omw-1.4')
 TUPLE_SIZE = 6
 TF_MASK = 2 ** 16 - 1
+
+lemmatizer = WordNetLemmatizer()
+stemmer = PorterStemmer()
 
 BODY_INDEX = 'full_body_index'
 TITLE_INDEX = 'full_title_index'
@@ -27,19 +31,14 @@ index_title = InvertedIndex().read_index(os.path.join(os.getcwd(), TITLE_INDEX),
 index_anchor = InvertedIndex().read_index(os.path.join(os.getcwd(), ANCHOR_INDEX), ANCHOR_INDEX)
 
 index_dict = {BODY_INDEX: index_text, TITLE_INDEX: index_title, ANCHOR_INDEX: index_anchor}
-AVG_DOC_LEN = {index_name: sum([data[1] for doc_id, data in index.doc_data.items()]) / index._N for index_name, index in
-               index_dict.items()}
+AVG_DOC_LEN = {index_name: sum([data[1] for doc_id, data in index.doc_data.items()]) / index._N for index_name, index in index_dict.items()}
 
 with open("pageviews-202108-user.pkl", 'rb') as f:
     PAGE_VIEWS = defaultdict(int,pickle.loads(f.read()))
     
 with open("pagerank_org.pkl", 'rb') as f:
     PAGERANK = defaultdict(int,pickle.loads(f.read()))
-
-lemmatizer = WordNetLemmatizer()
-stemmer = PorterStemmer()
-
-
+    
 class MyFlaskApp(Flask):
     def run(self, host=None, port=None, debug=None, **options):
         super(MyFlaskApp, self).run(host=host, port=port, debug=debug, **options)
@@ -50,17 +49,20 @@ app.config['JSONIFY_PRETTYPRINT_REGULAR'] = False
 
 RE_WORD = re.compile(r"""[\#\@\w](['\-]?\w){2,24}""", re.UNICODE)
 stopwords_frozen = frozenset(stopwords.words('english'))
-corpus_stopwords = ['category', 'references', 'also', 'links', 'extenal', 'see', 'thumb']
+corpus_stopwords = ["category", "references", "also", "external", "links", 
+                    "may", "first", "see", "history", "people", "one", "two", 
+                    "part", "thumb", "including", "second", "following", 
+                    "many", "however", "would", "became"]
 ALL_STOPWORDS = stopwords_frozen.union(corpus_stopwords)
 
 
 def tokenize(text, stem=False, lemm=False):
     """
     This function turns text into a list of tokens. Moreover, it filters stopwords.
-
     Parameters:
+        lemm: lemmatize tokens
+        stem: stem tokens
         text: string , represting the text to tokenize.
-
     Returns:
          list of tokens (e.g., list of tokens).
     """
@@ -82,7 +84,6 @@ def search():
         project requirements (efficiency, quality, etc.). That means it is up to
         you to decide on whether to use stemming, remove stopwords, use
         PageRank, query expansion, etc.
-
         To issue a query navigate to a URL like:
          http://YOUR_SERVER_DOMAIN/search?query=hello+world
         where YOUR_SERVER_DOMAIN is something like XXXX-XX-XX-XX-XX.ngrok.io
@@ -101,30 +102,31 @@ def search():
     tokenized_query = tokenize(query)
     if len(tokenized_query) == 0:
         return jsonify(res)
-
-    # # query expansion
-    # word2vec_sim_score = defaultdict(float)
-    # for term in tokenized_query:
-    #     word2vec_sim_score[term] = 1.0
-    #     try:
-    #         similar_terms = model.most_similar(term, topn=3)
-    #     except KeyError:
-    #         continue
-    #     for sim_term, similarity in similar_terms:
-    #         word2vec_sim_score[sim_term] = max(similarity, word2vec_sim_score[sim_term])
-    #
-    # tokenized_query = list(word2vec_sim_score.keys())
-    title_weight, body_weight, anchor_weight = 0.35, 0.5, 0.15
+    
+#     lemm_tokenized_query = tokenize(query, lemm=True)
+#     query expansion - removed due to queries taking too long to return and results weren't vastly improved
+#     word2vec_sim_score = defaultdict(float)
+#     for term in tokenized_query:
+#         word2vec_sim_score[term] = 1.0
+#         try:
+#             similar_terms = model.most_similar(term, topn=2)
+#         except KeyError:
+#             continue
+#         for sim_term, similarity in similar_terms:
+#             word2vec_sim_score[sim_term] = max(similarity, word2vec_sim_score[sim_term])
+#     tokenized_query = list(word2vec_sim_score.keys())
+    
+    title_weight, body_weight, anchor_weight = 0.35, 0.50, 0.15 # TODO: dynamic weights by token length
     merged_score = defaultdict(float)
     sorted_score_body = cosin_similarity_score(tokenized_query, index_text, BODY_INDEX)
     sorted_score_title = cosin_similarity_score(tokenized_query, index_title, TITLE_INDEX)
-    sorted__score_anchor = cosin_similarity_score(tokenized_query, index_anchor, ANCHOR_INDEX)
-
+    sorted_score_anchor = cosin_similarity_score(tokenized_query, index_anchor, ANCHOR_INDEX)
+    
     for doc_id, sim_score in sorted_score_body.items():
         merged_score[doc_id] += sim_score * body_weight
     for doc_id, sim_score in sorted_score_title.items():
         merged_score[doc_id] += sim_score * title_weight
-    for doc_id, sim_score in sorted__score_anchor.items():
+    for doc_id, sim_score in sorted_score_anchor.items():
         merged_score[doc_id] += sim_score * anchor_weight
 
     term_page_ranking = {}
@@ -138,6 +140,7 @@ def search():
 
     adjusted_scores = {k: v * (pagerank[k] + pageviews[k]) for k, v in merged_score.items()}
     sorted_adjusted_scores = {k: v for k, v in sorted(adjusted_scores.items(), key=lambda item: item[1], reverse=True)}
+
     # add top 100 docs to result
     for i, doc_id in enumerate(sorted_adjusted_scores.keys()):
         if i == 100:
@@ -154,7 +157,6 @@ def search_body():
         SIMILARITY OF THE BODY OF ARTICLES ONLY. DO NOT use stemming. DO USE the
         staff-provided tokenizer from Assignment 3 (GCP part) to do the
         tokenization and remove stopwords.
-
         To issue a query navigate to a URL like:
          http://YOUR_SERVER_DOMAIN/search_body?query=hello+world
         where YOUR_SERVER_DOMAIN is something like XXXX-XX-XX-XX-XX.ngrok.io
@@ -195,7 +197,6 @@ def search_title():
         document with a title that matches only one distinct query word,
         regardless of the number of times the term appeared in the title (or
         query).
-
         Test this by navigating to the a URL like:
          http://YOUR_SERVER_DOMAIN/search_title?query=hello+world
         where YOUR_SERVER_DOMAIN is something like XXXX-XX-XX-XX-XX.ngrok.io
@@ -240,7 +241,6 @@ def search_anchor():
         be ranked before a document with anchor text that matches only one
         distinct query word, regardless of the number of times the term appeared
         in the anchor text (or query).
-
         Test this by navigating to a URL like:
          http://YOUR_SERVER_DOMAIN/search_anchor?query=hello+world
         where YOUR_SERVER_DOMAIN is something like XXXX-XX-XX-XX-XX.ngrok.io
@@ -278,7 +278,6 @@ def search_anchor():
 @app.route("/get_pagerank", methods=['POST'])
 def get_pagerank():
     """ Returns PageRank values for a list of provided wiki article IDs.
-
         Test this by issuing a POST request to a URL like:
           http://YOUR_SERVER_DOMAIN/get_pagerank
         with a json payload of the list of article ids. In python do:
@@ -305,7 +304,6 @@ def get_pagerank():
 def get_pageview():
     """ Returns the number of page views that each of the provide wiki articles
         had in August 2021.
-
         Test this by issuing a POST request to a URL like:
           http://YOUR_SERVER_DOMAIN/get_pageview
         with a json payload of the list of article ids. In python do:
@@ -372,7 +370,7 @@ def bm25_score(tokenized_query, index, index_folder=".", b=0.75, k1=1.5, k3=1.5)
     tf_query = Counter(tokenized_query)
     avg_dl = AVG_DOC_LEN[index_folder]
     for term, count in tf_query.items():
-        pls = index.read_posting_list(term)
+        pls = index.read_posting_list(term, index_folder)
         if pls is None:
             pls = []
         term_idf = index.get_idf(term)
