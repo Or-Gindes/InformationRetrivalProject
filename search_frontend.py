@@ -359,7 +359,7 @@ def cosin_similarity_score(tokenized_query, index, index_folder="."):
     return sorted_cosin_sim
 
 
-def bm25_score(tokenized_query, index, index_folder=".", b=0.75, k=1.5):
+def bm25_score(tokenized_query, index, index_folder=".", b=0.75, k1=1.5, k3=1.5):
     """
     Support function to calculate bm25 score
     :param index: InvertedIndex
@@ -379,10 +379,8 @@ def bm25_score(tokenized_query, index, index_folder=".", b=0.75, k=1.5):
         query_tf = count / query_len
         for doc_id, doc_tf in pls:
             doc_len = index.doc_data[doc_id][1]
-            # normalized document tfidf
-            doc_tfidf = doc_tf / doc_len * term_idf
-            numerator = ((k + 1) * doc_tfidf) * ((k + 1) * query_tf)
-            denumerator = k * (1 - b + b * doc_len / avg_dl) + (doc_tf / doc_len) * query_tf
+            numerator = ((k1 + 1) * doc_tf / doc_len) * term_idf * ((k3 + 1) * query_tf)
+            denumerator = (k1 * (1 - b + b * doc_len / avg_dl) + doc_tf / doc_len) * (k3 + query_tf)
             score[doc_id] += numerator / denumerator
 
     sorted_bm25 = {k: v for k, v in sorted(score.items(), key=lambda item: item[1], reverse=True)}
