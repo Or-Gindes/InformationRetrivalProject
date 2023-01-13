@@ -14,6 +14,7 @@ from collections import defaultdict
 from contextlib import closing
 import hashlib
 from math import log
+import gcsfs
 
 
 def _hash(s):
@@ -74,14 +75,16 @@ class MultiFileReader:
 
     def read(self, locs, n_bytes, bin_folder="."):
         b = []
+        fs = gcsfs.GCSFileSystem(project="inforetassignment3")
         for f_name, offset in locs:
-            if f_name not in self._open_files:
-                self._open_files[f_name] = open(os.path.join(bin_folder, f_name), 'rb')
-            f = self._open_files[f_name]
-            f.seek(offset)
-            n_read = min(n_bytes, BLOCK_SIZE - offset)
-            b.append(f.read(n_read))
-            n_bytes -= n_read
+            with fs.open(f'201640042_project/{bin_folder}/{f_name}') as f:
+            # if f_name not in self._open_files:
+            #     self._open_files[f_name] = open(os.path.join(bin_folder, f_name), 'rb')
+            # f = self._open_files[f_name]
+                f.seek(offset)
+                n_read = min(n_bytes, BLOCK_SIZE - offset)
+                b.append(f.read(n_read))
+                n_bytes -= n_read
         return b''.join(b)
 
     def close(self):

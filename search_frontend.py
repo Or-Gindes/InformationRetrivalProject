@@ -26,9 +26,9 @@ stemmer = PorterStemmer()
 BODY_INDEX = 'full_body_index'
 TITLE_INDEX = 'full_title_index'
 ANCHOR_INDEX = 'full_anchor_index'
-index_text = InvertedIndex().read_index(os.path.join(os.getcwd(), BODY_INDEX), BODY_INDEX)
-index_title = InvertedIndex().read_index(os.path.join(os.getcwd(), TITLE_INDEX), TITLE_INDEX)
-index_anchor = InvertedIndex().read_index(os.path.join(os.getcwd(), ANCHOR_INDEX), ANCHOR_INDEX)
+index_text = InvertedIndex().read_index(os.getcwd(), BODY_INDEX)
+index_title = InvertedIndex().read_index(os.getcwd(), TITLE_INDEX)
+index_anchor = InvertedIndex().read_index(os.getcwd(), ANCHOR_INDEX)
 
 index_dict = {BODY_INDEX: index_text, TITLE_INDEX: index_title, ANCHOR_INDEX: index_anchor}
 AVG_DOC_LEN = {index_name: sum([data[1] for doc_id, data in index.doc_data.items()]) / index._N for index_name, index in index_dict.items()}
@@ -52,7 +52,7 @@ stopwords_frozen = frozenset(stopwords.words('english'))
 corpus_stopwords = ["category", "references", "also", "external", "links", 
                     "may", "first", "see", "history", "people", "one", "two", 
                     "part", "thumb", "including", "second", "following", 
-                    "many", "however", "would", "became"]
+                    "many", "however", "would", "became", "best"]
 ALL_STOPWORDS = stopwords_frozen.union(corpus_stopwords)
 
 
