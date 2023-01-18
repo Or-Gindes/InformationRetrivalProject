@@ -38,7 +38,8 @@ with open("pageviews-202108-user.pkl", 'rb') as f:
     
 with open("pagerank_org.pkl", 'rb') as f:
     PAGERANK = defaultdict(int,pickle.loads(f.read()))
-    
+
+
 class MyFlaskApp(Flask):
     def run(self, host=None, port=None, debug=None, **options):
         super(MyFlaskApp, self).run(host=host, port=port, debug=debug, **options)
