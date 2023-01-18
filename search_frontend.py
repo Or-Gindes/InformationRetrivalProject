@@ -115,8 +115,14 @@ def search():
 #         for sim_term, similarity in similar_terms:
 #             word2vec_sim_score[sim_term] = max(similarity, word2vec_sim_score[sim_term])
 #     tokenized_query = list(word2vec_sim_score.keys())
-    
-    title_weight, body_weight, anchor_weight = 0.35, 0.50, 0.15 # TODO: dynamic weights by token length
+
+    if len(query) == 1:
+        title_weight, body_weight, anchor_weight = 0.6, 0.1, 0.3
+    elif len(re.findall(r"(\w+)\s(and|the)\s(\w+)", query)) > 0 or len(re.findall(r"\d{4}", query)) > 0:
+        title_weight, body_weight, anchor_weight = 0.4, 0.2, 0.4
+    else:
+        title_weight, body_weight, anchor_weight = 0.3, 0.6, 0.1
+
     merged_score = defaultdict(float)
     sorted_score_body = cosin_similarity_score(tokenized_query, index_text, BODY_INDEX)
     sorted_score_title = cosin_similarity_score(tokenized_query, index_title, TITLE_INDEX)
