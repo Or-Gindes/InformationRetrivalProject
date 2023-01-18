@@ -1,4 +1,4 @@
-# Information Retrival Project
+# Information Retrieval Project
 Author: Or Gindes\
 Team: CC\
 Submission Date: 15-Jan-2023
