@@ -25,9 +25,11 @@ stemmer = PorterStemmer()
 
 BODY_INDEX = 'full_body_index'
 TITLE_INDEX = 'full_title_index'
+STEMMED_TITLE_INDEX = 'full_stemmed_title_index'
 ANCHOR_INDEX = 'full_anchor_index'
 index_text = InvertedIndex().read_index(os.getcwd(), BODY_INDEX)
 index_title = InvertedIndex().read_index(os.getcwd(), TITLE_INDEX)
+stemmed_index_title = InvertedIndex().read_index(os.getcwd(), STEMMED_TITLE_INDEX)
 index_anchor = InvertedIndex().read_index(os.getcwd(), ANCHOR_INDEX)
 
 index_dict = {BODY_INDEX: index_text, TITLE_INDEX: index_title, ANCHOR_INDEX: index_anchor}
@@ -104,7 +106,7 @@ def search():
     if len(tokenized_query) == 0:
         return jsonify(res)
     
-#     lemm_tokenized_query = tokenize(query, lemm=True)
+    stemmed_tokenized_query = tokenize(query, stem=True)
 #     query expansion - removed due to queries taking too long to return and results weren't vastly improved
 #     word2vec_sim_score = defaultdict(float)
 #     for term in tokenized_query:
@@ -120,13 +122,13 @@ def search():
     if len(query) == 1:
         title_weight, body_weight, anchor_weight = 0.6, 0.1, 0.3
     elif len(re.findall(r"(\w+)\s(and|the)\s(\w+)", query)) > 0 or len(re.findall(r"\d{4}", query)) > 0:
-        title_weight, body_weight, anchor_weight = 0.4, 0.2, 0.4
+        title_weight, body_weight, anchor_weight = 0.3, 0.2, 0.5
     else:
         title_weight, body_weight, anchor_weight = 0.3, 0.6, 0.1
 
     merged_score = defaultdict(float)
     sorted_score_body = cosin_similarity_score(tokenized_query, index_text, BODY_INDEX)
-    sorted_score_title = cosin_similarity_score(tokenized_query, index_title, TITLE_INDEX)
+    sorted_score_title = cosin_similarity_score(stemmed_tokenized_query, stemmed_index_title, STEMMED_TITLE_INDEX)
     sorted_score_anchor = cosin_similarity_score(tokenized_query, index_anchor, ANCHOR_INDEX)
     
     for doc_id, sim_score in sorted_score_body.items():
@@ -136,23 +138,31 @@ def search():
     for doc_id, sim_score in sorted_score_anchor.items():
         merged_score[doc_id] += sim_score * anchor_weight
 
+    sorted_merged_scores = {k: v for k, v in sorted(merged_score.items(), key=lambda item: item[1], reverse=True)[:100]}
+    threshold = np.mean(list(sorted_merged_scores.values()))
+    filtered_merged_scores = {k: v for k, v in sorted_merged_scores.items() if v > threshold}
+
     term_page_ranking = {}
     term_page_views = {}
-    for doc_id in merged_score.keys():
+    for doc_id in filtered_merged_scores.keys():
         term_page_ranking[doc_id] = PAGERANK[doc_id]
         term_page_views[doc_id] = PAGE_VIEWS[doc_id]
 
     pagerank = {key: rank for rank, key in enumerate(sorted(term_page_ranking, key=term_page_ranking.get), 1)}
     pageviews = {key: rank for rank, key in enumerate(sorted(term_page_views, key=term_page_views.get), 1)}
 
-    adjusted_scores = {k: v * (pagerank[k] + pageviews[k]) for k, v in merged_score.items()}
+    adjusted_scores = {k: v * (pagerank[k] + pageviews[k]) for k, v in filtered_merged_scores.items()}
     sorted_adjusted_scores = {k: v for k, v in sorted(adjusted_scores.items(), key=lambda item: item[1], reverse=True)}
+
 
     # add top 100 docs to result
     for i, doc_id in enumerate(sorted_adjusted_scores.keys()):
         if i == 100:
             break
-        res.append((doc_id, index_text.doc2title[doc_id]))
+        try:
+            res.append((doc_id, index_text.doc2title[doc_id]))
+        except KeyError:
+            pass
 
     # END SOLUTION
     return jsonify(res)
